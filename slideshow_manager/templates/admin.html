@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Verwaltung | Slideshow Manager{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h2>Slides verwalten</h2>
+  <p>Erstelle neue Slides oder bearbeite bestehende Einträge.</p>
+</section>
+
+<section class="admin-grid">
+  <form id="slide-form" class="panel">
+    <h3>Neue Folie</h3>
+    <label>
+      Titel
+      <input type="text" name="title" required />
+    </label>
+    <label>
+      Beschreibung
+      <textarea name="description" rows="3"></textarea>
+    </label>
+    <label>
+      Bild-URL
+      <input type="url" name="image_url" required placeholder="https://..." />
+    </label>
+    <button type="submit">Speichern</button>
+    <p class="form-feedback" hidden></p>
+  </form>
+
+  <div class="panel">
+    <h3>Vorhandene Folien</h3>
+    <ul id="slides-list" class="slides-list">
+      {% for slide in slides %}
+      <li data-index="{{ loop.index0 }}">
+        <div class="slide-card">
+          <strong>{{ slide.title }}</strong>
+          <p>{{ slide.description }}</p>
+          <span class="url">{{ slide.image_url }}</span>
+          <div class="card-actions">
+            <button data-action="edit">Bearbeiten</button>
+            <button data-action="delete" class="danger">Löschen</button>
+          </div>
+        </div>
+      </li>
+      {% else %}
+      <li>Keine Folien vorhanden. Lege die erste Folie an.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/admin.js') }}" defer></script>
+{% endblock %}

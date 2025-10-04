@@ -1,0 +1,19 @@
+{
+  "slides": [
+    {
+      "title": "Willkommen",
+      "description": "Starte deine erste Präsentation in wenigen Sekunden.",
+      "image_url": "https://via.placeholder.com/800x450.png?text=Slideshow+Manager"
+    },
+    {
+      "title": "Verwalten",
+      "description": "Füge Folien hinzu, ändere Inhalte und sortiere sie nach Bedarf.",
+      "image_url": "https://via.placeholder.com/800x450.png?text=Folien+verwalten"
+    },
+    {
+      "title": "Präsentieren",
+      "description": "Nutze den Präsentationsmodus für Meetings oder Infobildschirme.",
+      "image_url": "https://via.placeholder.com/800x450.png?text=Los+geht's"
+    }
+  ]
+}
