@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Slideshow | Slideshow Manager{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h2>Aktuelle Präsentation</h2>
+  <p>Steuere deine Slides mit den Pfeiltasten oder den Buttons.</p>
+</section>
+<section class="slideshow" data-controller="slideshow">
+  <div class="slides" id="slides-container">
+    {% for slide in slides %}
+    <article class="slide {% if loop.first %}is-active{% endif %}" data-index="{{ loop.index0 }}">
+      <h3>{{ slide.title }}</h3>
+      <p>{{ slide.description }}</p>
+      <img src="{{ slide.image_url }}" alt="{{ slide.title }}" />
+    </article>
+    {% endfor %}
+  </div>
+  <div class="slideshow-controls">
+    <button type="button" id="prev-slide">Zurück</button>
+    <span id="slide-indicator">1 / {{ slides|length }}</span>
+    <button type="button" id="next-slide">Weiter</button>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/slideshow.js') }}" defer></script>
+{% endblock %}
