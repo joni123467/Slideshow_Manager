@@ -175,9 +175,16 @@ create_virtualenv() {
     log "Erstelle virtuelles Python-Umfeld"
     python3 -m venv "${venv_dir}"
   fi
-  source "${venv_dir}/bin/activate"
-  pip install --upgrade pip setuptools wheel
-  pip install --no-cache-dir -r "${INSTALL_ROOT}/requirements.txt"
+
+  local venv_python="${venv_dir}/bin/python"
+  local venv_pip="${venv_dir}/bin/pip"
+
+  "${venv_python}" -m pip install --upgrade pip setuptools wheel
+  "${venv_pip}" install --no-cache-dir -r "${INSTALL_ROOT}/requirements.txt"
+  if ! "${venv_python}" -c "import pam" >/dev/null 2>&1; then
+    log "Fehlende Abhängigkeit python-pam trotz Installation erkannt"
+    exit 1
+  fi
 }
 
 configure_environment_file() {
