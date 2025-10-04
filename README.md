@@ -85,10 +85,10 @@ sudo journalctl -u slideshow-manager.service -f
 
 ## Updates
 
-Für Aktualisierungen steht `scripts/update.sh` bereit. Das Skript lädt den gewünschten Branch erneut, synchronisiert den Inhalt nach `/opt/Slideshow_Manager/current`, installiert geänderte Python-Abhängigkeiten in der bestehenden virtuellen Umgebung und startet den Dienst neu.
+Für Aktualisierungen steht `scripts/update.sh` bereit. Das Skript lädt den gewünschten Branch erneut, synchronisiert den Inhalt nach `/opt/Slideshow_Manager`, installiert geänderte System- und Python-Abhängigkeiten und startet den Dienst neu.
 
 ```bash
-sudo /opt/Slideshow_Manager/current/scripts/update.sh
+sudo /opt/Slideshow_Manager/scripts/update.sh
 ```
 
 Auch hier kannst du die Umgebungsvariablen `SLIDESHOW_MANAGER_DEFAULT_REPO` und `SLIDESHOW_MANAGER_BRANCH` setzen, um auf andere Branches oder Forks zu wechseln.
