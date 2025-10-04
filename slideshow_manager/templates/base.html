@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Slideshow Manager{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  </head>
+  <body>
+    <header>
+      <div class="container flex-between">
+        <div>
+          <strong>Slideshow Manager</strong>
+          <span class="small">v{{ app_version }}</span>
+        </div>
+        <nav>
+          {% if g.user %}
+            <a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+            <a href="{{ url_for('dashboard.devices') }}">Geräte</a>
+            <a href="{{ url_for('auth.logout') }}">Logout</a>
+          {% else %}
+            <a href="{{ url_for('auth.login') }}">Login</a>
+          {% endif %}
+        </nav>
+      </div>
+    </header>
+    <main>
+      <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </body>
+</html>

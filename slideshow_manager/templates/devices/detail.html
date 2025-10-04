@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}{{ device.name }} · Slideshow Manager{% endblock %}
+{% block content %}
+  <div class="flex-between" style="margin-bottom: 1.5rem;">
+    <div>
+      <h1>{{ device.name }}</h1>
+      <p class="small">{{ device.base_url }} · Benutzer {{ device.username }}</p>
+      {% if device.tags %}
+        <p>{% for tag in device.tags %}<span class="badge">{{ tag }}</span> {% endfor %}</p>
+      {% endif %}
+      {% if device.notes %}
+        <p>{{ device.notes }}</p>
+      {% endif %}
+    </div>
+    <a class="button secondary" href="{{ url_for('dashboard.device_edit', device_id=device.id) }}">Bearbeiten</a>
+  </div>
+
+  {% for error in errors %}
+    <div class="alert alert-danger">{{ error }}</div>
+  {% endfor %}
+
+  <div class="grid">
+    <div class="card">
+      <h2>Status</h2>
+      {% if state %}
+        <p><strong>Service:</strong> {{ state.service_status }} (aktiv: {{ 'ja' if state.service_active else 'nein' }})</p>
+        <p><strong>Aktuelles Medium:</strong> {{ state.primary_media_path or '–' }}</p>
+        <p><strong>Quelle:</strong> {{ state.primary_source or '–' }}</p>
+        <p><strong>Theme:</strong> {{ state.theme }}</p>
+        <p><strong>Version:</strong> {{ state.version }}</p>
+        {% if state.primary_media_type == 'image' and state.primary_source and state.primary_media_path %}
+          <img src="{{ url_for('dashboard.device_preview', device_id=device.id) }}?source={{ state.primary_source | urlencode }}&path={{ state.primary_media_path | urlencode }}" alt="Vorschau" style="width:100%; border-radius:0.5rem; margin-top:0.75rem;" />
+        {% endif %}
+      {% else %}
+        <p>Keine Statusinformationen abrufbar.</p>
+      {% endif %}
+      <form method="post" action="{{ url_for('dashboard.device_player', device_id=device.id) }}" class="flex" style="margin-top:1rem;">
+        <button name="action" value="start" type="submit">Start</button>
+        <button class="secondary" name="action" value="reload" type="submit">Neu laden</button>
+        <button class="danger" name="action" value="stop" type="submit">Stop</button>
+      </form>
+      <form method="post" action="{{ url_for('dashboard.device_info_screen', device_id=device.id) }}" style="margin-top:1rem;">
+        <label for="info-screen">Infobildschirm</label>
+        <select name="enabled" id="info-screen">
+          <option value="true">Aktivieren</option>
+          <option value="false" {% if state and not state.info_screen %}selected{% endif %}>Deaktivieren</option>
+        </select>
+        <button type="submit">Übernehmen</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Wiedergabe</h2>
+      <form method="post" action="{{ url_for('dashboard.device_playback', device_id=device.id) }}">
+        <label for="image_duration">Bilddauer (Sek.)</label>
+        <input id="image_duration" name="image_duration" type="number" min="1" value="{{ config.playback.image_duration if config else '' }}" />
+
+        <label for="transition_type">Übergang</label>
+        <input id="transition_type" name="transition_type" value="{{ config.playback.transition_type if config else '' }}" />
+
+        <label for="transition_duration">Übergangsdauer (Sek.)</label>
+        <input id="transition_duration" name="transition_duration" type="number" step="0.1" value="{{ config.playback.transition_duration if config else '' }}" />
+
+        <label for="image_fit">Bildanpassung</label>
+        <select id="image_fit" name="image_fit">
+          {% set current_fit = config.playback.image_fit if config else '' %}
+          {% for option in ['contain', 'stretch', 'original'] %}
+            <option value="{{ option }}" {% if option == current_fit %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+
+        <label for="image_rotation">Rotation</label>
+        <input id="image_rotation" name="image_rotation" type="number" min="0" max="359" value="{{ config.playback.image_rotation if config else '' }}" />
+
+        <button type="submit">Speichern</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Quellen</h2>
+    <div class="grid">
+      <div>
+        <h3>Neue Quelle</h3>
+        <form method="post" action="{{ url_for('dashboard.device_sources_create', device_id=device.id) }}">
+          <label for="source-name">Name</label>
+          <input id="source-name" name="name" required />
+
+          <label for="smb_path">SMB-Pfad (\\\server\share)</label>
+          <input id="smb_path" name="smb_path" />
+
+          <label for="server">Server</label>
+          <input id="server" name="server" />
+
+          <label for="share">Freigabe</label>
+          <input id="share" name="share" />
+
+          <label for="source_username">Benutzer</label>
+          <input id="source_username" name="source_username" />
+
+          <label for="source_password">Passwort</label>
+          <input id="source_password" name="source_password" type="password" />
+
+          <label for="domain">Domäne</label>
+          <input id="domain" name="domain" />
+
+          <label for="subpath">Unterordner</label>
+          <input id="subpath" name="subpath" />
+
+          <label><input type="checkbox" name="auto_scan" checked /> Automatisch scannen</label>
+
+          <button type="submit">Quelle hinzufügen</button>
+        </form>
+      </div>
+      <div>
+        <h3>Bestehende Quellen</h3>
+        {% if sources and sources.sources %}
+          {% for source in sources.sources %}
+            <div class="card" style="box-shadow:none; border:1px solid #e5e7eb;">
+              <h4>{{ source.name }}</h4>
+              <p class="small">{{ source.smb_path or source.server ~ '/' ~ source.share }}</p>
+              <form method="post" action="{{ url_for('dashboard.device_sources_update', device_id=device.id, name=source.name) }}">
+                <label>Name</label>
+                <input name="name" value="{{ source.name }}" />
+
+                <label>SMB-Pfad</label>
+                <input name="smb_path" value="{{ source.smb_path }}" />
+
+                <label>Benutzer</label>
+                <input name="source_username" value="{{ source.username }}" />
+
+                <label>Passwort</label>
+                <input name="source_password" type="password" placeholder="(unverändert)" />
+
+                <label>Domäne</label>
+                <input name="domain" value="{{ source.domain }}" />
+
+                <label>Unterordner</label>
+                <input name="subpath" value="{{ source.subpath }}" />
+
+                <label><input type="checkbox" name="auto_scan" {% if source.auto_scan %}checked{% endif %}/> Automatisch scannen</label>
+
+                <div class="flex" style="justify-content: flex-end; margin-top:0.75rem;">
+                  <button class="secondary" type="submit">Aktualisieren</button>
+                </div>
+              </form>
+              {% if source.name != 'local' %}
+                <form method="post" action="{{ url_for('dashboard.device_sources_delete', device_id=device.id, name=source.name) }}" onsubmit="return confirm('Quelle wirklich entfernen?');">
+                  <button class="danger" type="submit">Löschen</button>
+                </form>
+              {% endif %}
+            </div>
+          {% endfor %}
+        {% else %}
+          <p>Keine Quellen gefunden.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endblock %}

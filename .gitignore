@@ -1,8 +1,6 @@
-/node_modules
-/.next
-/out
-/.turbo
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+__pycache__/
+*.pyc
+.venv/
+.env
+.slideshow-cache/
+slideshow_manager/data/slides.local.json
