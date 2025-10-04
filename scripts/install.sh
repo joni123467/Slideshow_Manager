@@ -25,7 +25,7 @@ require_root() {
 }
 
 log() {
-  echo "[install] $*"
+  echo "[install] $*" >&2
 }
 
 find_pkg_manager() {

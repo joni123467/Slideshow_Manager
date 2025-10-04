@@ -23,7 +23,7 @@ require_root() {
 }
 
 log() {
-  echo "[update] $*"
+  echo "[update] $*" >&2
 }
 
 fetch_sources() {
