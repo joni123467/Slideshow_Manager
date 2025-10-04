@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Geräte · Slideshow Manager{% endblock %}
+{% block content %}
+  <div class="flex-between" style="margin-bottom: 1.5rem;">
+    <h1>Geräteverwaltung</h1>
+    <a class="button" href="{{ url_for('dashboard.device_create') }}">Neues Gerät</a>
+  </div>
+  <div class="card">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Basis-URL</th>
+          <th>Benutzer</th>
+          <th>Tags</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for device in devices %}
+          <tr>
+            <td>{{ device.name }}</td>
+            <td><code>{{ device.base_url }}</code></td>
+            <td>{{ device.username }}</td>
+            <td>
+              {% for tag in device.tags %}
+                <span class="badge">{{ tag }}</span>
+              {% else %}
+                <span class="small">–</span>
+              {% endfor %}
+            </td>
+            <td class="flex" style="justify-content: flex-end;">
+              <a class="button secondary" href="{{ url_for('dashboard.device_detail', device_id=device.id) }}">Öffnen</a>
+              <a class="button" href="{{ url_for('dashboard.device_edit', device_id=device.id) }}">Bearbeiten</a>
+              <form method="post" action="{{ url_for('dashboard.device_delete', device_id=device.id) }}" onsubmit="return confirm('Gerät wirklich löschen?');">
+                <button class="danger" type="submit">Löschen</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="5">Noch keine Geräte angelegt.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

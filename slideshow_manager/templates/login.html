@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Login · Slideshow Manager{% endblock %}
+{% block content %}
+  <div class="card" style="max-width: 480px; margin: 4rem auto;">
+    <h1>Anmeldung</h1>
+    <p class="small">Bitte melde dich mit deinem Linux-Benutzerkonto an.</p>
+    <form method="post">
+      <label for="username">Benutzername</label>
+      <input id="username" name="username" required />
+
+      <label for="password">Passwort</label>
+      <input id="password" name="password" type="password" required />
+
+      <button type="submit">Anmelden</button>
+    </form>
+  </div>
+{% endblock %}
