@@ -9,6 +9,7 @@ DEFAULT_REPO="${SLIDESHOW_MANAGER_DEFAULT_REPO:-https://github.com/joni123467/Sl
 BRANCH="${SLIDESHOW_MANAGER_BRANCH:-main}"
 SERVICE_USER="${SLIDESHOW_MANAGER_USER:-slideshowmgr}"
 TMP_DIR=""
+declare -a PERSISTENT_PATHS=("slideshow_manager/data/devices.json")
 
 cleanup() {
   if [[ -n "${TMP_DIR}" && -d "${TMP_DIR}" ]]; then
@@ -113,12 +114,32 @@ fetch_sources() {
 sync_release() {
   local source_dir="$1"
   local venv_backup=""
+  local data_backup=""
 
   mkdir -p "${INSTALL_ROOT}"
 
   if [[ -d "${INSTALL_ROOT}/.venv" ]]; then
     venv_backup="$(mktemp -d)"
     mv "${INSTALL_ROOT}/.venv" "${venv_backup}/.venv"
+  fi
+
+  if [[ ${#PERSISTENT_PATHS[@]} -gt 0 ]]; then
+    local backup_dir
+    backup_dir="$(mktemp -d)"
+    local preserved=0
+    for rel_path in "${PERSISTENT_PATHS[@]}"; do
+      if [[ -e "${INSTALL_ROOT}/${rel_path}" ]]; then
+        preserved=1
+        local backup_target="${backup_dir}/${rel_path}"
+        mkdir -p "$(dirname "${backup_target}")"
+        cp -a "${INSTALL_ROOT}/${rel_path}" "${backup_target}"
+      fi
+    done
+    if [[ ${preserved} -eq 1 ]]; then
+      data_backup="${backup_dir}"
+    else
+      rm -rf "${backup_dir}"
+    fi
   fi
 
   if [[ -d "${INSTALL_ROOT}" ]]; then
@@ -130,6 +151,17 @@ sync_release() {
   if [[ -n "${venv_backup}" && -d "${venv_backup}/.venv" ]]; then
     mv "${venv_backup}/.venv" "${INSTALL_ROOT}/.venv"
     rm -rf "${venv_backup}"
+  fi
+
+  if [[ -n "${data_backup}" ]]; then
+    for rel_path in "${PERSISTENT_PATHS[@]}"; do
+      if [[ -e "${data_backup}/${rel_path}" ]]; then
+        local target_dir="${INSTALL_ROOT}/$(dirname "${rel_path}")"
+        mkdir -p "${target_dir}"
+        cp -a "${data_backup}/${rel_path}" "${INSTALL_ROOT}/${rel_path}"
+      fi
+    done
+    rm -rf "${data_backup}"
   fi
 
   if compgen -G "${INSTALL_ROOT}/scripts/*.sh" >/dev/null; then
