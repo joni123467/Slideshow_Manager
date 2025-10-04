@@ -1,31 +1,40 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="de">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}Slideshow Manager{% endblock %}</title>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" />
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
-    {% block head %}{% endblock %}
   </head>
   <body>
-    <header class="topbar">
-      <div class="container">
-        <h1 class="logo"><a href="{{ url_for('slideshow.index') }}">Slideshow Manager</a></h1>
-        <nav class="nav">
-          <a href="{{ url_for('slideshow.index') }}">Präsentation</a>
-          <a href="{{ url_for('slideshow.admin') }}">Verwaltung</a>
+    <header>
+      <div class="container flex-between">
+        <div>
+          <strong>Slideshow Manager</strong>
+          <span class="small">v{{ app_version }}</span>
+        </div>
+        <nav>
+          {% if g.user %}
+            <a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+            <a href="{{ url_for('dashboard.devices') }}">Geräte</a>
+            <a href="{{ url_for('auth.logout') }}">Logout</a>
+          {% else %}
+            <a href="{{ url_for('auth.login') }}">Login</a>
+          {% endif %}
         </nav>
       </div>
     </header>
-    <main class="container">
-      {% block content %}{% endblock %}
-    </main>
-    <footer class="footer">
+    <main>
       <div class="container">
-        Bereitgestellt mit ❤️ von Slideshow Manager
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
       </div>
-    </footer>
-    {% block scripts %}{% endblock %}
+    </main>
   </body>
 </html>

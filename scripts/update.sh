@@ -1,85 +1,77 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-INSTALL_DIR="${INSTALL_DIR:-/opt/Slideshow_Manager}"
-SERVICE_NAME="slideshow-manager.service"
-REPO="${SLIDESHOW_MANAGER_REPO:-${SLIDESHOW_MANAGER_DEFAULT_REPO:-https://github.com/joni123467/Slideshow_Manager}}"
+INSTALL_ROOT="/opt/Slideshow_Manager"
+SERVICE_NAME="slideshow-manager"
+ENV_FILE="/etc/slideshow-manager.env"
+DEFAULT_REPO="${SLIDESHOW_MANAGER_DEFAULT_REPO:-https://github.com/joni123467/Slideshow_Manager}"
 BRANCH="${SLIDESHOW_MANAGER_BRANCH:-main}"
-VENV_DIR="$INSTALL_DIR/.venv"
+TMP_DIR=""
 
-log() {
-  echo "[update.sh] $*"
+cleanup() {
+  if [[ -n "${TMP_DIR}" && -d "${TMP_DIR}" ]]; then
+    rm -rf "${TMP_DIR}"
+  fi
 }
-
-abort() {
-  echo "[update.sh] ERROR: $*" >&2
-  exit 1
-}
+trap cleanup EXIT
 
 require_root() {
-  if [[ $(id -u) -ne 0 ]]; then
-    abort "Dieses Skript muss als root laufen."
+  if [[ "${EUID}" -ne 0 ]]; then
+    echo "[update] Dieses Skript muss als root laufen." >&2
+    exit 1
   fi
 }
 
-check_command() {
-  command -v "$1" >/dev/null 2>&1
+log() {
+  echo "[update] $*"
 }
 
-update_repo() {
-  if [[ -d "$INSTALL_DIR/.git" && -d "$INSTALL_DIR/.git/refs" ]]; then
-    log "Ziehe Änderungen von $REPO (Branch $BRANCH) ..."
-    git -C "$INSTALL_DIR" fetch --depth=1 origin "$BRANCH"
-    git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH"
+fetch_sources() {
+  TMP_DIR="$(mktemp -d)"
+  local target="${TMP_DIR}/source"
+  if command -v git >/dev/null 2>&1; then
+    log "Klone ${DEFAULT_REPO}@${BRANCH}"
+    git clone --depth 1 --branch "${BRANCH}" "${DEFAULT_REPO}" "${target}"
   else
-    log "Kein Git-Repository gefunden. Lade Archiv herunter ..."
-    local tmp="$(mktemp -d)"
-    local archive="$tmp/source.tar.gz"
-    local download_url="$REPO/archive/refs/heads/$BRANCH.tar.gz"
-    if check_command curl; then
-      curl -L "$download_url" -o "$archive"
-    elif check_command wget; then
-      wget -O "$archive" "$download_url"
-    else
-      abort "Weder curl noch wget verfügbar."
-    fi
-    tar -xzf "$archive" -C "$tmp"
-    local extracted
-    extracted=$(find "$tmp" -maxdepth 1 -type d -name '*Slideshow_Manager*' | head -n1)
-    if [[ -z "$extracted" ]]; then
-      abort "Archiv konnte nicht entpackt werden."
-    fi
-    if ! check_command rsync; then
-      abort "rsync wird benötigt, um Dateien zu aktualisieren. Bitte installiere rsync."
-    fi
-    rsync -a --delete "$extracted"/ "$INSTALL_DIR"/
-    rm -rf "$tmp"
+    log "Lade Archiv ohne Git (${DEFAULT_REPO}@${BRANCH})"
+    local archive="${TMP_DIR}/source.tar.gz"
+    curl -fsSL "${DEFAULT_REPO}/archive/refs/heads/${BRANCH}.tar.gz" -o "${archive}"
+    tar -xzf "${archive}" -C "${TMP_DIR}"
+    target="$(find "${TMP_DIR}" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
   fi
+  echo "${target}"
 }
 
-install_python_deps() {
-  if [[ ! -d "$VENV_DIR" ]]; then
-    abort "Virtuelle Umgebung wurde nicht gefunden. Bitte Installer erneut ausführen."
+sync_release() {
+  local source_dir="$1"
+  rm -rf "${INSTALL_ROOT}/current"
+  mkdir -p "${INSTALL_ROOT}/current"
+  cp -a "${source_dir}/." "${INSTALL_ROOT}/current/"
+  chmod +x "${INSTALL_ROOT}/current"/scripts/*.sh
+}
+
+install_dependencies() {
+  local venv_dir="${INSTALL_ROOT}/.venv"
+  if [[ ! -d "${venv_dir}" ]]; then
+    log "Virtuelle Umgebung fehlt – führe zunächst install.sh aus."
+    exit 1
   fi
-  source "$VENV_DIR/bin/activate"
+  source "${venv_dir}/bin/activate"
   pip install --upgrade pip
-  pip install -r "$INSTALL_DIR/requirements.txt"
-  deactivate || true
+  pip install --no-cache-dir -r "${INSTALL_ROOT}/current/requirements.txt"
 }
 
 restart_service() {
-  if systemctl is-enabled --quiet "$SERVICE_NAME"; then
-    log "Starte Dienst neu ..."
-    systemctl restart "$SERVICE_NAME"
-  else
-    log "Dienst $SERVICE_NAME ist nicht aktiviert. Überspringe Neustart."
-  fi
+  systemctl daemon-reload
+  systemctl restart "${SERVICE_NAME}.service"
 }
 
 main() {
   require_root
-  update_repo
-  install_python_deps
+  local source_dir
+  source_dir="$(fetch_sources)"
+  sync_release "${source_dir}"
+  install_dependencies
   restart_service
   log "Update abgeschlossen."
 }

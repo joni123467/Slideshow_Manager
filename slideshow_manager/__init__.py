@@ -1,36 +1,37 @@
-"""Slideshow Manager Flask application factory."""
+"""Application factory for the Slideshow Manager dashboard."""
 from __future__ import annotations
-
-import os
-from pathlib import Path
 
 from flask import Flask
 
-from . import storage
-from .views import bp
+from .auth import bp as auth_bp
+from .views import bp as dashboard_bp
+from .storage import DeviceStorage
 
 
-DEFAULT_DATA_DIR = Path(__file__).resolve().parent / "data"
-
-
-def create_app() -> Flask:
-    """Create and configure the Flask application instance."""
+def create_app(config: dict | None = None) -> Flask:
     app = Flask(__name__)
+    app.config.from_mapping(
+        SECRET_KEY="change-me",
+        STORAGE_PATH="slideshow_manager/data/devices.json",
+        AUTH_MODE="pam",
+        TEST_USERS={},
+        REMOTE_TIMEOUT=8,
+    )
 
-    data_dir = Path(
-        os.environ.get("SLIDESHOW_MANAGER_DATA_DIR", DEFAULT_DATA_DIR)
-    ).expanduser().resolve()
-    data_dir.mkdir(parents=True, exist_ok=True)
-    app.config["DATA_DIR"] = data_dir
+    if config:
+        app.config.update(config)
 
-    storage.ensure_seed_data(data_dir)
+    storage = DeviceStorage(app.config["STORAGE_PATH"])
+    app.storage = storage  # type: ignore[attr-defined]
 
-    app.register_blueprint(bp)
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(dashboard_bp)
 
-    @app.route("/healthz")
-    def healthcheck() -> tuple[str, int]:
-        """Simple health check endpoint for monitoring."""
-        return "ok", 200
+    @app.context_processor
+    def inject_globals():
+        return {
+            "app_version": "1.0.0",
+        }
 
     return app
 

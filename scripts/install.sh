@@ -1,248 +1,199 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="1.0.0"
-INSTALL_DIR="${INSTALL_DIR:-/opt/Slideshow_Manager}"
-DEFAULT_REPO="https://github.com/joni123467/Slideshow_Manager"
-REPO="${SLIDESHOW_MANAGER_REPO:-${SLIDESHOW_MANAGER_DEFAULT_REPO:-$DEFAULT_REPO}}"
+INSTALL_ROOT="/opt/Slideshow_Manager"
+SERVICE_NAME="slideshow-manager"
+SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+ENV_FILE="/etc/slideshow-manager.env"
+DEFAULT_REPO="${SLIDESHOW_MANAGER_DEFAULT_REPO:-https://github.com/joni123467/Slideshow_Manager}"
 BRANCH="${SLIDESHOW_MANAGER_BRANCH:-main}"
-SERVICE_NAME="slideshow-manager.service"
-SERVICE_USER="${SLIDESHOW_MANAGER_SERVICE_USER:-slideshow}"
-PYTHON_BIN="python3"
-VENV_NAME=".venv"
-TMP_DIR="/tmp/slideshow-manager-install"
+SERVICE_USER="${SLIDESHOW_MANAGER_USER:-slideshowmgr}"
+TMP_DIR=""
 
-log() {
-  echo "[install.sh] $*"
+cleanup() {
+  if [[ -n "${TMP_DIR}" && -d "${TMP_DIR}" ]]; then
+    rm -rf "${TMP_DIR}"
+  fi
 }
-
-abort() {
-  echo "[install.sh] ERROR: $*" >&2
-  exit 1
-}
-
-usage() {
-  cat <<USAGE
-Slideshow Manager Installer v$VERSION
-
-Optionen:
-  --repo <url>          Git-Repository oder HTTPS-Quelle (Standard: $REPO)
-  --branch <name>       Branch oder Tag (Standard: $BRANCH)
-  --service-user <name> Systembenutzer für den Dienst (Standard: $SERVICE_USER)
-  --install-dir <path>  Installationsverzeichnis (Standard: $INSTALL_DIR)
-  -h, --help            Diese Hilfe anzeigen
-USAGE
-}
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --repo)
-      [[ $# -ge 2 ]] || abort "--repo benötigt ein Argument"
-      REPO="$2"
-      shift 2
-      ;;
-    --branch)
-      [[ $# -ge 2 ]] || abort "--branch benötigt ein Argument"
-      BRANCH="$2"
-      shift 2
-      ;;
-    --service-user)
-      [[ $# -ge 2 ]] || abort "--service-user benötigt ein Argument"
-      SERVICE_USER="$2"
-      shift 2
-      ;;
-    --install-dir)
-      [[ $# -ge 2 ]] || abort "--install-dir benötigt ein Argument"
-      INSTALL_DIR="$2"
-      shift 2
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    *)
-      abort "Unbekannte Option: $1"
-      ;;
-  esac
-done
+trap cleanup EXIT
 
 require_root() {
-  if [[ $(id -u) -ne 0 ]]; then
-    abort "Dieses Skript muss mit Root-Rechten ausgeführt werden. Nutze sudo."
+  if [[ "${EUID}" -ne 0 ]]; then
+    echo "[install] Dieses Skript muss mit Root-Rechten ausgeführt werden." >&2
+    exit 1
   fi
 }
 
-ensure_tmp_dir() {
-  rm -rf "$TMP_DIR"
-  mkdir -p "$TMP_DIR"
+log() {
+  echo "[install] $*"
 }
 
-check_command() {
-  command -v "$1" >/dev/null 2>&1
-}
-
-detect_package_manager() {
-  if check_command apt-get; then
-    echo apt
-  elif check_command dnf; then
-    echo dnf
-  elif check_command yum; then
-    echo yum
-  elif check_command pacman; then
-    echo pacman
-  elif check_command zypper; then
-    echo zypper
+find_pkg_manager() {
+  if command -v apt-get >/dev/null 2>&1; then
+    echo "apt"
+  elif command -v dnf >/dev/null 2>&1; then
+    echo "dnf"
+  elif command -v yum >/dev/null 2>&1; then
+    echo "yum"
+  elif command -v pacman >/dev/null 2>&1; then
+    echo "pacman"
+  elif command -v zypper >/dev/null 2>&1; then
+    echo "zypper"
   else
     echo ""
   fi
 }
 
 install_dependencies() {
-  local manager
-  manager=$(detect_package_manager)
-
-  if [[ -z "$manager" ]]; then
-    log "Konnte keinen unterstützten Paketmanager erkennen. Bitte installiere python3, python3-venv, git, curl, wget und tar manuell."
-    return
-  fi
-
-  log "Installiere erforderliche Pakete über $manager ..."
-  case "$manager" in
+  local pkg_manager
+  pkg_manager="$(find_pkg_manager)"
+  local packages=(python3 python3-venv python3-pip curl tar)
+  case "${pkg_manager}" in
     apt)
+      packages+=(git)
+      log "Installiere Pakete über apt (${packages[*]})"
       apt-get update
-      DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip git curl wget tar rsync
+      DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"
       ;;
-    dnf)
-      dnf install -y python3 python3-virtualenv python3-pip git curl wget tar rsync
-      ;;
-    yum)
-      yum install -y python3 python3-virtualenv python3-pip git curl wget tar rsync
+    dnf|yum)
+      packages+=(git)
+      log "Installiere Pakete über ${pkg_manager} (${packages[*]})"
+      "${pkg_manager}" install -y "${packages[@]}"
       ;;
     pacman)
-      pacman -Sy --noconfirm python python-pip git curl wget tar rsync
+      packages+=(git base-devel)
+      log "Installiere Pakete über pacman (${packages[*]})"
+      pacman -Sy --noconfirm "${packages[@]}"
       ;;
     zypper)
-      zypper --non-interactive install python3 python3-virtualenv python3-pip git curl wget tar rsync
+      packages+=(git)
+      log "Installiere Pakete über zypper (${packages[*]})"
+      zypper --non-interactive install "${packages[@]}"
+      ;;
+    *)
+      log "Keinen Paketmanager gefunden – stelle sicher, dass python3, pip, tar und curl vorhanden sind."
       ;;
   esac
 }
 
-fetch_repository() {
-  if check_command git; then
-    log "Klone Repository $REPO (Branch $BRANCH) ..."
-    if [[ -d "$INSTALL_DIR/.git" ]]; then
-      log "Bestehendes Repository gefunden. Aktualisiere..."
-      git -C "$INSTALL_DIR" fetch --depth=1 origin "$BRANCH"
-      git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH"
-    else
-      rm -rf "$INSTALL_DIR"
-      git clone --depth=1 --branch "$BRANCH" "$REPO" "$INSTALL_DIR"
-    fi
-  else
-    log "Git nicht verfügbar. Lade Archiv herunter ..."
-    ensure_tmp_dir
-    local archive="$TMP_DIR/source.tar.gz"
-    local download_url="$REPO/archive/refs/heads/$BRANCH.tar.gz"
-    if check_command curl; then
-      curl -L "$download_url" -o "$archive"
-    elif check_command wget; then
-      wget -O "$archive" "$download_url"
-    else
-      abort "Weder curl noch wget verfügbar."
-    fi
-    rm -rf "$INSTALL_DIR"
-    mkdir -p "$INSTALL_DIR"
-    tar -xzf "$archive" -C "$TMP_DIR"
-    local extracted
-    extracted=$(find "$TMP_DIR" -maxdepth 1 -type d -name '*Slideshow_Manager*' | head -n1)
-    if [[ -z "$extracted" ]]; then
-      abort "Konnte entpacktes Archiv nicht finden."
-    fi
-    shopt -s dotglob
-    mv "$extracted"/* "$INSTALL_DIR"/
-    shopt -u dotglob
-  fi
-}
-
-ensure_service_user() {
-  if id "$SERVICE_USER" >/dev/null 2>&1; then
+ensure_user() {
+  if id "${SERVICE_USER}" >/dev/null 2>&1; then
     return
   fi
-
-  log "Lege Service-Benutzer $SERVICE_USER an ..."
-  useradd --system --create-home --shell /usr/sbin/nologin "$SERVICE_USER"
+  log "Lege Systembenutzer ${SERVICE_USER} an"
+  useradd --system --create-home --home "/var/lib/${SERVICE_NAME}" --shell /usr/sbin/nologin "${SERVICE_USER}"
 }
 
-setup_virtualenv() {
-  log "Richte Python-Umgebung ein ..."
-  mkdir -p "$INSTALL_DIR"
-  if [[ ! -x "$(command -v $PYTHON_BIN)" ]]; then
-    abort "python3 wurde nicht gefunden."
+fetch_sources() {
+  TMP_DIR="$(mktemp -d)"
+  local target="${TMP_DIR}/source"
+  local branch="${BRANCH}"
+  local repo="${DEFAULT_REPO}"
+
+  if command -v git >/dev/null 2>&1; then
+    log "Klone ${repo}@${branch}"
+    git clone --depth 1 --branch "${branch}" "${repo}" "${target}"
+  else
+    log "Lade Archiv ohne Git (${repo}@${branch})"
+    local archive="${TMP_DIR}/source.tar.gz"
+    curl -fsSL "${repo}/archive/refs/heads/${branch}.tar.gz" -o "${archive}"
+    mkdir -p "${target}"
+    tar -xzf "${archive}" -C "${TMP_DIR}"
+    local extracted
+    extracted="$(find "${TMP_DIR}" -mindepth 1 -maxdepth 1 -type d ! -name source | head -n 1)"
+    if [[ -z "${extracted}" ]]; then
+      echo "Konnte Archiv nicht extrahieren" >&2
+      exit 1
+    fi
+    mv "${extracted}" "${target}"
   fi
-  "$PYTHON_BIN" -m venv "$INSTALL_DIR/$VENV_NAME"
-  source "$INSTALL_DIR/$VENV_NAME/bin/activate"
+  echo "${target}"
+}
+
+sync_release() {
+  local source_dir="$1"
+  mkdir -p "${INSTALL_ROOT}"
+  rm -rf "${INSTALL_ROOT}/current"
+  mkdir -p "${INSTALL_ROOT}/current"
+  cp -a "${source_dir}/." "${INSTALL_ROOT}/current/"
+  chmod +x "${INSTALL_ROOT}/current"/scripts/*.sh
+}
+
+create_virtualenv() {
+  local venv_dir="${INSTALL_ROOT}/.venv"
+  if [[ ! -d "${venv_dir}" ]]; then
+    log "Erstelle virtuelles Python-Umfeld"
+    python3 -m venv "${venv_dir}"
+  fi
+  source "${venv_dir}/bin/activate"
   pip install --upgrade pip
-  pip install -r "$INSTALL_DIR/requirements.txt"
-  deactivate || true
+  pip install --no-cache-dir -r "${INSTALL_ROOT}/current/requirements.txt"
 }
 
-initialize_data() {
-  log "Initialisiere Beispieldaten ..."
-  source "$INSTALL_DIR/$VENV_NAME/bin/activate"
-  SLIDESHOW_MANAGER_DATA_DIR="$INSTALL_DIR/data" python - <<'PY'
-from pathlib import Path
-from slideshow_manager import storage
-from slideshow_manager import create_app
-
-app = create_app()
-storage.ensure_seed_data(Path(app.config["DATA_DIR"]))
+configure_environment_file() {
+  if [[ ! -f "${ENV_FILE}" ]]; then
+    log "Erzeuge ${ENV_FILE}"
+    local secret
+    secret="$(python3 - <<'PY'
+import secrets
+print(secrets.token_hex(32))
 PY
-  deactivate || true
+)"
+    cat <<EOF > "${ENV_FILE}"
+SECRET_KEY=${secret}
+SLIDESHOW_MANAGER_PORT=5000
+AUTH_MODE=pam
+EOF
+    chmod 640 "${ENV_FILE}"
+  fi
+  chown "${SERVICE_USER}:${SERVICE_USER}" "${ENV_FILE}"
 }
 
-configure_permissions() {
-  log "Setze Besitzrechte für $SERVICE_USER ..."
-  chown -R "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR"
-}
-
-create_systemd_unit() {
-  log "Erstelle systemd Unit ..."
-  local unit_path="/etc/systemd/system/$SERVICE_NAME"
-  cat <<UNIT > "$unit_path"
+write_service_unit() {
+  log "Schreibe systemd-Unit"
+  cat <<EOF > "${SERVICE_FILE}"
 [Unit]
-Description=Slideshow Manager Flask Anwendung
+Description=Slideshow Manager Dashboard
 After=network.target
 
 [Service]
 Type=simple
-User=$SERVICE_USER
-WorkingDirectory=$INSTALL_DIR
-Environment="SLIDESHOW_MANAGER_DATA_DIR=$INSTALL_DIR/data"
-Environment="PATH=$INSTALL_DIR/$VENV_NAME/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
-ExecStart=$INSTALL_DIR/scripts/start-service.sh
+User=${SERVICE_USER}
+Group=${SERVICE_USER}
+WorkingDirectory=${INSTALL_ROOT}/current
+EnvironmentFile=-${ENV_FILE}
+ExecStart=${INSTALL_ROOT}/current/scripts/start-service.sh
 Restart=on-failure
 RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
-UNIT
-
-  chmod 644 "$unit_path"
+EOF
   systemctl daemon-reload
-  systemctl enable --now "$SERVICE_NAME"
+  systemctl enable --now "${SERVICE_NAME}.service"
+}
+
+set_permissions() {
+  chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_ROOT}"
 }
 
 main() {
-  log "Starte Installation v$VERSION"
   require_root
   install_dependencies
-  fetch_repository
-  ensure_service_user
-  setup_virtualenv
-  initialize_data
-  configure_permissions
-  create_systemd_unit
-  log "Installation abgeschlossen. Die Anwendung läuft jetzt unter http://localhost:8000"
+  ensure_user
+  local source_dir
+  source_dir="$(fetch_sources)"
+  sync_release "${source_dir}"
+  create_virtualenv
+  configure_environment_file
+  set_permissions
+  write_service_unit
+  local port="5000"
+  if [[ -f "${ENV_FILE}" ]]; then
+    port="$(grep -E '^SLIDESHOW_MANAGER_PORT=' "${ENV_FILE}" | cut -d '=' -f2-)"
+    port="${port:-5000}"
+  fi
+  log "Installation abgeschlossen. Die Weboberfläche läuft auf Port ${port}."
 }
 
 main "$@"

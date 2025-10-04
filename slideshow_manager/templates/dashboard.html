@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Slideshow Manager{% endblock %}
+{% block content %}
+  <div class="flex-between" style="margin-bottom: 1.5rem;">
+    <h1>Gerätestatus</h1>
+    <a class="button" href="{{ url_for('dashboard.devices') }}">Geräte verwalten</a>
+  </div>
+  <div class="grid">
+    {% for entry in summaries %}
+      <div class="card">
+        <div class="flex-between">
+          <div>
+            <h2 style="margin-bottom: 0.25rem;">{{ entry.device.name }}</h2>
+            <p class="small">{{ entry.device.base_url }}</p>
+          </div>
+          <a class="button secondary" href="{{ url_for('dashboard.device_detail', device_id=entry.device.id) }}">Details</a>
+        </div>
+        {% if entry.error %}
+          <div class="alert alert-danger" style="margin-top: 1rem;">{{ entry.error }}</div>
+        {% else %}
+          {% set state = entry.state %}
+          <p><strong>Status:</strong> {{ state.primary_status or 'unbekannt' }}</p>
+          <p><strong>Quelle:</strong> {{ state.primary_source or '–' }}</p>
+          <p><strong>Medium:</strong> {{ state.primary_media_path or '–' }}</p>
+          {% if state.primary_media_type == 'image' and state.primary_source and state.primary_media_path %}
+            <img src="{{ url_for('dashboard.device_preview', device_id=entry.device.id) }}?source={{ state.primary_source | urlencode }}&path={{ state.primary_media_path | urlencode }}" alt="Vorschau" style="width:100%; border-radius:0.5rem; margin-top:0.75rem;" />
+          {% endif %}
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="card">
+        <h2>Keine Geräte</h2>
+        <p>Lege ein erstes Gerät an, um Statusinformationen anzeigen zu lassen.</p>
+        <a class="button" href="{{ url_for('dashboard.device_create') }}">Gerät hinzufügen</a>
+      </div>
+    {% endfor %}
+  </div>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% if device %}
+  {% set page_title = 'Gerät bearbeiten' %}
+{% else %}
+  {% set page_title = 'Neues Gerät' %}
+{% endif %}
+{% block title %}{{ page_title }} · Slideshow Manager{% endblock %}
+{% block content %}
+  <div class="card" style="max-width: 720px;">
+    <h1>{{ page_title }}</h1>
+    <form method="post">
+      <label for="name">Name</label>
+      <input id="name" name="name" value="{{ device.name if device else '' }}" required />
+
+      <label for="base_url">Basis-URL</label>
+      <input id="base_url" name="base_url" placeholder="https://raspberrypi.local" value="{{ device.base_url if device else '' }}" required />
+
+      <label for="username">Benutzername</label>
+      <input id="username" name="username" value="{{ device.username if device else '' }}" required />
+
+      <label for="password">Passwort</label>
+      <input id="password" name="password" type="password" value="{{ device.password if device else '' }}" />
+      <p class="small">Passwort im Klartext – sichere das System entsprechend ab.</p>
+
+      <label for="tags">Tags (Komma-getrennt)</label>
+      <input id="tags" name="tags" value="{{ tag_value if device else '' }}" />
+
+      <label for="notes">Notizen</label>
+      <textarea id="notes" name="notes" rows="3">{{ device.notes if device and device.notes else '' }}</textarea>
+
+      <div class="flex" style="justify-content: flex-end;">
+        <a class="button secondary" href="{{ url_for('dashboard.devices') }}">Abbrechen</a>
+        <button type="submit">Speichern</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}
