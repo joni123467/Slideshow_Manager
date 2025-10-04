@@ -72,7 +72,15 @@ MIT
 
 For automated installations and upgrades the repository ships with shell scripts located in `scripts/`:
 
-- `scripts/install.sh` – clones/downloads the latest `version-x.x.x` branch (or a provided branch) and installs dependencies.
-- `scripts/update.sh` – refreshes an existing installation to a selected version. If Git is not available the script falls back to downloading an archive via HTTPS.
+- `scripts/install.sh` – installs the latest `version-x.x.x` branch (or a branch provided via `--branch`) into `/opt/Slideshow_Manager` by default, installs dependencies, runs a production build and configures a `systemd` unit (`slideshow-manager.service`) so the application starts automatically after boot. Run the installer with root privileges (`sudo scripts/install.sh`) so it can create `/opt/Slideshow_Manager` and place the service definition under `/etc/systemd/system`. Use `--service-user <name>` when the daemon should run as a non-root user.
+- `scripts/update.sh` – refreshes an existing installation to a selected version, triggers a rebuild and schedules a restart of the `systemd` unit once the update completed. If Git is not available the script falls back to downloading an archive via HTTPS.
 
-Both scripts rely on the environment variable `SLIDESHOW_MANAGER_REPO` (format: `owner/repo`) when a Git remote cannot be inferred automatically. Optional authentication against the GitHub API can be configured with `SLIDESHOW_MANAGER_REPO_TOKEN`. The update flow is also exposed in the dashboard UI (`/updates`) which lists available branches and allows administrators to trigger the shell updater directly from the browser.
+Both scripts rely on the environment variable `SLIDESHOW_MANAGER_REPO` (format: `owner/repo`) when a Git remote cannot be inferred automatically. Optional authentication against the GitHub API can be configured with `SLIDESHOW_MANAGER_REPO_TOKEN`. The update flow is also exposed in the dashboard UI (`/updates`) which lists available branches and allows administrators to trigger the shell updater directly from the browser. Updates initiated from the web interface return success immediately and restart the daemon a few seconds later so the HTTP response can complete before the service restarts.
+
+After installation the service can be controlled via the usual `systemd` commands:
+
+```bash
+sudo systemctl status slideshow-manager.service
+sudo systemctl restart slideshow-manager.service
+sudo systemctl disable --now slideshow-manager.service
+```

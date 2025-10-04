@@ -10,6 +10,7 @@ REPO_IDENTIFIER=""
 REMOTE_URL=""
 ROOT_OVERRIDE=""
 SKIP_DEPENDENCIES=0
+SYSTEMD_SERVICE_NAME="slideshow-manager.service"
 
 usage() {
   cat <<USAGE
@@ -196,17 +197,52 @@ ensure_branch() {
   BRANCH="$latest"
 }
 
+detect_package_runner() {
+  if command -v pnpm >/dev/null 2>&1; then
+    echo "pnpm"
+    return
+  fi
+  if command -v npm >/dev/null 2>&1; then
+    echo "npm"
+    return
+  fi
+  echo ""
+}
+
 install_dependencies() {
   if [[ "$SKIP_DEPENDENCIES" -eq 1 ]]; then
     log "Skipping dependency installation (requested)"
     return
   fi
-  if command -v pnpm >/dev/null 2>&1; then
-    (cd "$ROOT_DIR" && pnpm install)
-  elif command -v npm >/dev/null 2>&1; then
-    (cd "$ROOT_DIR" && npm install)
-  else
+  local runner
+  runner=$(detect_package_runner)
+  if [[ -z "$runner" ]]; then
     log "npm/pnpm not found – skipping dependency installation"
+    return
+  fi
+  if [[ "$runner" == "pnpm" ]]; then
+    (cd "$ROOT_DIR" && pnpm install)
+  else
+    (cd "$ROOT_DIR" && npm install)
+  fi
+}
+
+build_application() {
+  if [[ "$SKIP_DEPENDENCIES" -eq 1 ]]; then
+    log "Skipping build because dependencies were skipped"
+    return
+  fi
+  local runner
+  runner=$(detect_package_runner)
+  if [[ -z "$runner" ]]; then
+    log "npm/pnpm not found – skipping build"
+    return
+  fi
+  log "Building production bundle"
+  if [[ "$runner" == "pnpm" ]]; then
+    (cd "$ROOT_DIR" && pnpm run build)
+  else
+    (cd "$ROOT_DIR" && npm run build)
   fi
 }
 
@@ -303,6 +339,29 @@ PY
   trap - EXIT
 }
 
+schedule_service_restart() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    log "systemctl not available – skipping service restart"
+    return
+  fi
+  if ! systemctl cat "$SYSTEMD_SERVICE_NAME" >/dev/null 2>&1; then
+    log "Systemd unit '$SYSTEMD_SERVICE_NAME' not installed – skipping restart"
+    return
+  fi
+  log "Restarting systemd service '$SYSTEMD_SERVICE_NAME'"
+  if command -v systemd-run >/dev/null 2>&1; then
+    if ! systemd-run --quiet --on-active=1s /bin/systemctl restart "$SYSTEMD_SERVICE_NAME"; then
+      if ! systemctl restart "$SYSTEMD_SERVICE_NAME"; then
+        log "Failed to restart systemd service '$SYSTEMD_SERVICE_NAME'. Please restart manually."
+      fi
+    fi
+  else
+    if ! systemctl restart "$SYSTEMD_SERVICE_NAME"; then
+      log "Failed to restart systemd service '$SYSTEMD_SERVICE_NAME'. Please restart manually."
+    fi
+  fi
+}
+
 main() {
   parse_args "$@"
   if [[ -n "$ROOT_OVERRIDE" ]]; then
@@ -347,7 +406,9 @@ main() {
     update_without_git "$REMOTE_URL" "$BRANCH"
   fi
   install_dependencies
+  build_application
   write_metadata "$REPO_IDENTIFIER" "$BRANCH"
+  schedule_service_restart
   log "Update complete"
 }
 

@@ -3,13 +3,15 @@ set -euo pipefail
 
 SCRIPT_NAME=$(basename "$0")
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-DEFAULT_TARGET="Slideshow_Manager"
+DEFAULT_TARGET="/opt/Slideshow_Manager"
 METADATA_FILE=".slideshow-manager.json"
 BRANCH=""
 TARGET_DIR=""
 REPO_IDENTIFIER=""
 REMOTE_URL=""
 SKIP_DEPENDENCIES=0
+SERVICE_USER=""
+SYSTEMD_SERVICE_NAME="slideshow-manager.service"
 
 usage() {
   cat <<USAGE
@@ -19,7 +21,8 @@ Options:
   --branch <name>        Install a specific version branch (default: latest version-*)
   --repo <owner/repo>    Repository identifier used when no Git remote is available
   --repo-url <url>       Explicit Git clone URL (overrides identifier derived URL)
-  --target <dir>         Installation directory (default: "+$DEFAULT_TARGET" in current directory)
+  --target <dir>         Installation directory (default: $DEFAULT_TARGET)
+  --service-user <user>  System user that should run the service (default: current user/root)
   --skip-deps            Skip dependency installation step
   -h, --help             Show this help message
 USAGE
@@ -59,6 +62,10 @@ parse_args() {
         TARGET_DIR="$2"
         shift 2
         ;;
+      --service-user)
+        SERVICE_USER="$2"
+        shift 2
+        ;;
       --skip-deps)
         SKIP_DEPENDENCIES=1
         shift
@@ -83,6 +90,25 @@ sanitize_path() {
     path="$(pwd)/$path"
   fi
   echo "$path"
+}
+
+ensure_root() {
+  if [[ $EUID -ne 0 ]]; then
+    error "This installer must be executed with administrative privileges (sudo)."
+  fi
+}
+
+default_service_user() {
+  if [[ -n "$SERVICE_USER" ]]; then
+    return
+  fi
+  if [[ -n "${SUDO_USER:-}" ]]; then
+    SERVICE_USER="$SUDO_USER"
+    return
+  fi
+  if [[ -n "${USER:-}" && "$USER" != "root" ]]; then
+    SERVICE_USER="$USER"
+  fi
 }
 
 parse_repo_identifier() {
@@ -231,19 +257,116 @@ download_archive() {
   trap - EXIT
 }
 
+detect_package_runner() {
+  if command -v pnpm >/dev/null 2>&1; then
+    echo "pnpm"
+    return
+  fi
+  if command -v npm >/dev/null 2>&1; then
+    echo "npm"
+    return
+  fi
+  echo ""
+}
+
 install_dependencies() {
   local target="$1"
   if [[ "$SKIP_DEPENDENCIES" -eq 1 ]]; then
     log "Skipping dependency installation (requested)"
     return
   fi
-  if command -v pnpm >/dev/null 2>&1; then
-    (cd "$target" && pnpm install)
-  elif command -v npm >/dev/null 2>&1; then
-    (cd "$target" && npm install)
-  else
+  local runner
+  runner=$(detect_package_runner)
+  if [[ -z "$runner" ]]; then
     log "npm/pnpm not found – skipping dependency installation"
+    return
   fi
+  if [[ "$runner" == "pnpm" ]]; then
+    (cd "$target" && pnpm install)
+  else
+    (cd "$target" && npm install)
+  fi
+}
+
+build_application() {
+  local target="$1"
+  if [[ "$SKIP_DEPENDENCIES" -eq 1 ]]; then
+    log "Skipping build because dependencies were skipped"
+    return
+  fi
+  local runner
+  runner=$(detect_package_runner)
+  if [[ -z "$runner" ]]; then
+    log "npm/pnpm not found – skipping build"
+    return
+  fi
+  log "Building production bundle"
+  if [[ "$runner" == "pnpm" ]]; then
+    (cd "$target" && pnpm run build)
+  else
+    (cd "$target" && npm run build)
+  fi
+}
+
+setup_systemd_service() {
+  local target="$1"
+  local service_user="$2"
+  if ! command -v systemctl >/dev/null 2>&1; then
+    log "systemctl not available – skipping systemd service setup"
+    return
+  fi
+  local service_file="/etc/systemd/system/$SYSTEMD_SERVICE_NAME"
+  local user_line=""
+  if [[ -n "$service_user" ]]; then
+    if id -u "$service_user" >/dev/null 2>&1; then
+      user_line="User=$service_user"
+    else
+      log "Warning: user '$service_user' does not exist. The service will run as root."
+    fi
+  fi
+  if [[ -f "$target/scripts/start-service.sh" ]]; then
+    chmod +x "$target/scripts/start-service.sh"
+  fi
+  cat >"$service_file" <<UNIT
+[Unit]
+Description=Slideshow Manager
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$target
+ExecStart=$target/scripts/start-service.sh
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+${user_line}
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  chmod 644 "$service_file"
+  log "systemd unit written to $service_file"
+  systemctl daemon-reload
+  systemctl enable --now "$SYSTEMD_SERVICE_NAME"
+  if [[ -n "$service_user" && -n "$user_line" ]]; then
+    log "Service '$SYSTEMD_SERVICE_NAME' configured to run as user '$service_user'"
+  else
+    log "Service '$SYSTEMD_SERVICE_NAME' configured to run as root"
+  fi
+  log "Service '$SYSTEMD_SERVICE_NAME' enabled and started"
+}
+
+ensure_service_permissions() {
+  local target="$1"
+  local service_user="$2"
+  if [[ -z "$service_user" ]]; then
+    return
+  fi
+  if ! id -u "$service_user" >/dev/null 2>&1; then
+    return
+  fi
+  chown -R "$service_user":"$service_user" "$target"
 }
 
 write_metadata() {
@@ -261,10 +384,12 @@ JSON
 
 main() {
   parse_args "$@"
+  ensure_root
   if [[ -z "$TARGET_DIR" ]]; then
     TARGET_DIR="$DEFAULT_TARGET"
   fi
   TARGET_DIR=$(sanitize_path "$TARGET_DIR")
+  default_service_user
   if [[ -z "$REPO_IDENTIFIER" ]]; then
     REPO_IDENTIFIER="$(parse_repo_identifier "${SLIDESHOW_MANAGER_REPO:-}")"
   fi
@@ -303,7 +428,10 @@ main() {
     download_archive "$http_base" "$BRANCH" "$TARGET_DIR"
   fi
   install_dependencies "$TARGET_DIR"
+  build_application "$TARGET_DIR"
   write_metadata "$TARGET_DIR" "$REPO_IDENTIFIER" "$BRANCH"
+  ensure_service_permissions "$TARGET_DIR" "$SERVICE_USER"
+  setup_systemd_service "$TARGET_DIR" "$SERVICE_USER"
   log "Installation complete in '$TARGET_DIR'"
 }
 
