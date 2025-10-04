@@ -72,7 +72,7 @@ MIT
 
 For automated installations and upgrades the repository ships with shell scripts located in `scripts/`:
 
-- `scripts/install.sh` – installs the latest `version-x.x.x` branch (or a branch provided via `--branch`) into `/opt/Slideshow_Manager` by default, installs dependencies, runs a production build and configures a `systemd` unit (`slideshow-manager.service`) so the application starts automatically after boot. Run the installer with root privileges (`sudo scripts/install.sh`) so it can create `/opt/Slideshow_Manager` and place the service definition under `/etc/systemd/system`. Use `--service-user <name>` when the daemon should run as a non-root user. When no repository is specified explicitly the script falls back to `joni123467/Slideshow_Manager`.
+- `scripts/install.sh` – installs the latest `version-x.x.x` branch (or a branch provided via `--branch`) into `/opt/Slideshow_Manager` by default, installs dependencies, runs a production build and configures a `systemd` unit (`slideshow-manager.service`) so the application starts automatically after boot. Run the installer with root privileges (`sudo scripts/install.sh`) so it can create `/opt/Slideshow_Manager` and place the service definition under `/etc/systemd/system`. Use `--service-user <name>` when the daemon should run as a non-root user. When no repository is specified explicitly the script falls back to `joni123467/Slideshow_Manager`. During execution the script ensures that Git, Curl, Tar, Node.js ≥ 18 and pnpm are present (via `apt`, `dnf`, `yum` or `pacman`) and writes the service unit with an expanded `PATH` that includes the local `node_modules/.bin` directory so CLI tools remain available to the daemon.
 - `scripts/update.sh` – refreshes an existing installation to a selected version, triggers a rebuild and schedules a restart of the `systemd` unit once the update completed. If Git is not available the script falls back to downloading an archive via HTTPS.
 
 Both scripts rely on the environment variable `SLIDESHOW_MANAGER_REPO` (format: `owner/repo`) when a Git remote cannot be inferred automatically. Optional authentication against the GitHub API can be configured with `SLIDESHOW_MANAGER_REPO_TOKEN`. If you maintain a fork and want to change the baked-in default, set `SLIDESHOW_MANAGER_DEFAULT_REPO` before running the scripts or pass `--repo <owner/repo>` explicitly. The update flow is also exposed in the dashboard UI (`/updates`) which lists available branches and allows administrators to trigger the shell updater directly from the browser. Updates initiated from the web interface return success immediately and restart the daemon a few seconds later so the HTTP response can complete before the service restarts.
@@ -88,6 +88,16 @@ sudo ./install.sh
 ```
 
 The installer automatically selects the newest `version-x.x.x` branch. Use `--branch version-1.2.3` to pin a specific release or `--repo <owner/repo>` to target a different repository.
+
+### What gets installed automatically?
+
+When invoked with administrative privileges the installer attempts to provision every runtime dependency that Slideshow Manager requires:
+
+- `git`, `curl`, `tar` and certificate bundles used for fetching releases and archives.
+- A modern Node.js runtime (currently Node 20 via NodeSource packages on Debian/Ubuntu/RHEL/Fedora derivatives, or the distribution packages on Arch-based systems).
+- `pnpm` (via Corepack or npm) so production builds and the system service can call the bundled scripts.
+
+If your distribution exposes none of the supported package managers (`apt`, `dnf`, `yum`, `pacman`) the script aborts with an explicit error message so you can install the prerequisites manually before re-running the installer.
 
 After installation the service can be controlled via the usual `systemd` commands:
 

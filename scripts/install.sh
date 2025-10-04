@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+DEFAULT_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export PATH="$DEFAULT_PATH:$PATH"
+MIN_NODE_MAJOR=18
+
 SCRIPT_NAME=$(basename "$0")
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 DEFAULT_TARGET="/opt/Slideshow_Manager"
@@ -36,6 +40,147 @@ log() {
 error() {
   echo "[$SCRIPT_NAME] ERROR: $*" >&2
   exit 1
+}
+
+detect_system_package_manager() {
+  if command -v apt-get >/dev/null 2>&1; then
+    echo "apt"
+  elif command -v dnf >/dev/null 2>&1; then
+    echo "dnf"
+  elif command -v yum >/dev/null 2>&1; then
+    echo "yum"
+  elif command -v pacman >/dev/null 2>&1; then
+    echo "pacman"
+  else
+    echo ""
+  fi
+}
+
+install_system_packages() {
+  local manager="$1"
+  shift
+  local packages=("$@")
+  if [[ ${#packages[@]} -eq 0 ]]; then
+    return
+  fi
+  case "$manager" in
+    apt)
+      log "Installing system packages via apt-get: ${packages[*]}"
+      DEBIAN_FRONTEND=noninteractive apt-get update
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${packages[@]}"
+      ;;
+    dnf)
+      log "Installing system packages via dnf: ${packages[*]}"
+      dnf install -y "${packages[@]}"
+      ;;
+    yum)
+      log "Installing system packages via yum: ${packages[*]}"
+      yum install -y "${packages[@]}"
+      ;;
+    pacman)
+      log "Installing system packages via pacman: ${packages[*]}"
+      pacman -Sy --noconfirm "${packages[@]}"
+      ;;
+    *)
+      log "No supported package manager detected – please ensure ${packages[*]} are installed manually."
+      ;;
+  esac
+}
+
+ensure_base_dependencies() {
+  local manager
+  manager=$(detect_system_package_manager)
+  local required=(git curl tar ca-certificates)
+  local missing=()
+  for pkg in "${required[@]}"; do
+    case "$pkg" in
+      git)
+        command -v git >/dev/null 2>&1 || missing+=("git")
+        ;;
+      curl)
+        command -v curl >/dev/null 2>&1 || missing+=("curl")
+        ;;
+      tar)
+        command -v tar >/dev/null 2>&1 || missing+=("tar")
+        ;;
+      ca-certificates)
+        if [[ "$manager" == "apt" || "$manager" == "pacman" ]]; then
+          if [[ ! -f /etc/ssl/certs/ca-certificates.crt && ! -d /etc/pki/tls/certs ]]; then
+            missing+=("ca-certificates")
+          fi
+        fi
+        ;;
+    esac
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    if [[ -z "$manager" ]]; then
+      error "Missing required system tools (${missing[*]}) and unable to determine a supported package manager. Please install them manually and re-run the installer."
+    fi
+    install_system_packages "$manager" "${missing[@]}"
+  fi
+}
+
+ensure_node_runtime() {
+  local manager
+  manager=$(detect_system_package_manager)
+  local node_present=0
+  local current_major=0
+  if command -v node >/dev/null 2>&1; then
+    node_present=1
+    local version
+    version=$(node -v | sed 's/^v//')
+    current_major=${version%%.*}
+  fi
+  if [[ $node_present -eq 1 && $current_major -ge $MIN_NODE_MAJOR ]]; then
+    log "Node.js v$(node -v) already satisfies minimum requirement ($MIN_NODE_MAJOR)."
+    return
+  fi
+  if [[ $node_present -eq 1 ]]; then
+    log "Node.js $(node -v) is older than required major version $MIN_NODE_MAJOR – upgrading."
+  else
+    log "Node.js not detected – installing runtime."
+  fi
+  case "$manager" in
+    apt)
+      require_command curl
+      curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nodejs
+      ;;
+    dnf)
+      require_command curl
+      curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+      dnf install -y nodejs
+      ;;
+    yum)
+      require_command curl
+      curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+      yum install -y nodejs
+      ;;
+    pacman)
+      pacman -Sy --noconfirm nodejs npm
+      ;;
+    *)
+      error "Unable to install Node.js automatically. Please install Node.js $MIN_NODE_MAJOR or newer and re-run the installer."
+      ;;
+  esac
+}
+
+ensure_pnpm() {
+  if command -v pnpm >/dev/null 2>&1; then
+    return
+  fi
+  if command -v corepack >/dev/null 2>&1; then
+    log "Enabling pnpm via corepack"
+    corepack enable
+    corepack prepare pnpm@latest --activate
+    hash -r
+  elif command -v npm >/dev/null 2>&1; then
+    log "Installing pnpm globally via npm"
+    npm install -g pnpm
+    hash -r
+  else
+    error "npm is required to install pnpm."
+  fi
 }
 
 require_command() {
@@ -328,6 +473,7 @@ setup_systemd_service() {
   if [[ -f "$target/scripts/start-service.sh" ]]; then
     chmod +x "$target/scripts/start-service.sh"
   fi
+  local env_path="$DEFAULT_PATH:$target/node_modules/.bin"
   cat >"$service_file" <<UNIT
 [Unit]
 Description=Slideshow Manager
@@ -340,7 +486,7 @@ ExecStart=$target/scripts/start-service.sh
 Restart=on-failure
 RestartSec=5
 Environment=NODE_ENV=production
-Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment="PATH=$env_path"
 ${user_line}
 
 [Install]
@@ -386,6 +532,9 @@ JSON
 main() {
   parse_args "$@"
   ensure_root
+  ensure_base_dependencies
+  ensure_node_runtime
+  ensure_pnpm
   if [[ -z "$TARGET_DIR" ]]; then
     TARGET_DIR="$DEFAULT_TARGET"
   fi
