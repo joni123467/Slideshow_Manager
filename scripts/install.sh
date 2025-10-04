@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_NAME=$(basename "$0")
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 DEFAULT_TARGET="/opt/Slideshow_Manager"
+DEFAULT_REPO_IDENTIFIER="${SLIDESHOW_MANAGER_DEFAULT_REPO:-joni123467/Slideshow_Manager}"
 METADATA_FILE=".slideshow-manager.json"
 BRANCH=""
 TARGET_DIR=""
@@ -399,6 +400,9 @@ main() {
     if [[ -n "$derived" ]]; then
       REPO_IDENTIFIER="$derived"
     fi
+  fi
+  if [[ -z "$REPO_IDENTIFIER" ]]; then
+    REPO_IDENTIFIER="$(parse_repo_identifier "$DEFAULT_REPO_IDENTIFIER")"
   fi
   if [[ -z "$REPO_IDENTIFIER" && -z "$REMOTE_URL" ]]; then
     error "No repository identifier provided. Use --repo or set SLIDESHOW_MANAGER_REPO."

@@ -11,6 +11,7 @@ REMOTE_URL=""
 ROOT_OVERRIDE=""
 SKIP_DEPENDENCIES=0
 SYSTEMD_SERVICE_NAME="slideshow-manager.service"
+DEFAULT_REPO_IDENTIFIER="${SLIDESHOW_MANAGER_DEFAULT_REPO:-joni123467/Slideshow_Manager}"
 
 usage() {
   cat <<USAGE
@@ -386,6 +387,9 @@ main() {
   fi
   if [[ -z "$REPO_IDENTIFIER" && -n "${SLIDESHOW_MANAGER_REPO:-}" ]]; then
     REPO_IDENTIFIER="${SLIDESHOW_MANAGER_REPO}"
+  fi
+  if [[ -z "$REPO_IDENTIFIER" ]]; then
+    REPO_IDENTIFIER="$DEFAULT_REPO_IDENTIFIER"
   fi
   if [[ -z "$REMOTE_URL" ]]; then
     if [[ -d "$ROOT_DIR/.git" && command -v git >/dev/null 2>&1 ]]; then

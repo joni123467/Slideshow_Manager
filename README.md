@@ -72,10 +72,22 @@ MIT
 
 For automated installations and upgrades the repository ships with shell scripts located in `scripts/`:
 
-- `scripts/install.sh` – installs the latest `version-x.x.x` branch (or a branch provided via `--branch`) into `/opt/Slideshow_Manager` by default, installs dependencies, runs a production build and configures a `systemd` unit (`slideshow-manager.service`) so the application starts automatically after boot. Run the installer with root privileges (`sudo scripts/install.sh`) so it can create `/opt/Slideshow_Manager` and place the service definition under `/etc/systemd/system`. Use `--service-user <name>` when the daemon should run as a non-root user.
+- `scripts/install.sh` – installs the latest `version-x.x.x` branch (or a branch provided via `--branch`) into `/opt/Slideshow_Manager` by default, installs dependencies, runs a production build and configures a `systemd` unit (`slideshow-manager.service`) so the application starts automatically after boot. Run the installer with root privileges (`sudo scripts/install.sh`) so it can create `/opt/Slideshow_Manager` and place the service definition under `/etc/systemd/system`. Use `--service-user <name>` when the daemon should run as a non-root user. When no repository is specified explicitly the script falls back to `joni123467/Slideshow_Manager`.
 - `scripts/update.sh` – refreshes an existing installation to a selected version, triggers a rebuild and schedules a restart of the `systemd` unit once the update completed. If Git is not available the script falls back to downloading an archive via HTTPS.
 
-Both scripts rely on the environment variable `SLIDESHOW_MANAGER_REPO` (format: `owner/repo`) when a Git remote cannot be inferred automatically. Optional authentication against the GitHub API can be configured with `SLIDESHOW_MANAGER_REPO_TOKEN`. The update flow is also exposed in the dashboard UI (`/updates`) which lists available branches and allows administrators to trigger the shell updater directly from the browser. Updates initiated from the web interface return success immediately and restart the daemon a few seconds later so the HTTP response can complete before the service restarts.
+Both scripts rely on the environment variable `SLIDESHOW_MANAGER_REPO` (format: `owner/repo`) when a Git remote cannot be inferred automatically. Optional authentication against the GitHub API can be configured with `SLIDESHOW_MANAGER_REPO_TOKEN`. If you maintain a fork and want to change the baked-in default, set `SLIDESHOW_MANAGER_DEFAULT_REPO` before running the scripts or pass `--repo <owner/repo>` explicitly. The update flow is also exposed in the dashboard UI (`/updates`) which lists available branches and allows administrators to trigger the shell updater directly from the browser. Updates initiated from the web interface return success immediately and restart the daemon a few seconds later so the HTTP response can complete before the service restarts.
+
+### Downloading the installer via `wget`
+
+To install on a fresh machine without cloning the repository, download the installer script directly and execute it with elevated privileges. The commands below fetch the script from the `main` branch of this repository; adjust the branch or repository if you are using a fork.
+
+```bash
+wget -O install.sh https://raw.githubusercontent.com/joni123467/Slideshow_Manager/main/scripts/install.sh
+chmod +x install.sh
+sudo ./install.sh
+```
+
+The installer automatically selects the newest `version-x.x.x` branch. Use `--branch version-1.2.3` to pin a specific release or `--repo <owner/repo>` to target a different repository.
 
 After installation the service can be controlled via the usual `systemd` commands:
 
