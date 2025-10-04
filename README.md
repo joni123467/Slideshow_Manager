@@ -1,74 +1,110 @@
-<<<<<<< HEAD
-# Slideshow_Manager
-=======
-# Slideshow Manager
+# Slideshow Manager (Flask)
 
-A Next.js App Router project that manages one or more Slideshow appliances through a secure proxy. The project mirrors the feature set of the existing Flask-based Slideshow UI while adding fleet management tooling.
+Der Slideshow Manager ist eine leichtgewichtige Flask-Anwendung, mit der du Präsentationen im Browser verwaltest und abspielst. Eine Administrationsoberfläche erlaubt das Anlegen, Bearbeiten und Löschen von Slides. Die Daten werden als JSON-Datei gespeichert und können dadurch unkompliziert gesichert oder angepasst werden.
 
-## Features
+## Funktionsumfang
 
-- Secure proxy layer that mirrors the native device API (state, config, playback, sources, media preview, logs, config import/export).
-- HttpOnly session cookie management that stores the device session on the server side only.
-- React Query powered dashboard with polling, cache invalidation and optimistic UI states.
-- React Hook Form + Zod driven forms aligned with the API constraints for playback and source management.
-- Multi-device registry with role-based access hooks and optional audit logging stubs.
-- Modular UI components that can be themed and localized.
+- Präsentationsansicht mit Tastatur- und Buttonsteuerung
+- Administrationsbereich zum Hinzufügen, Bearbeiten und Entfernen von Slides
+- REST-API (`/api/slides`) für Integrationen oder Automatisierungen
+- JSON-basierter Datenspeicher (Standard: `data/slides.json`)
+- Produktionsbetrieb über Gunicorn und `systemd`
 
-## Getting Started
+## Schnellstart (Entwicklung)
 
-1. **Install dependencies**
+1. **Abhängigkeiten installieren**
 
    ```bash
-   pnpm install
-   # or
-   npm install
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install --upgrade pip
+   pip install -r requirements.txt
    ```
 
-2. **Environment variables**
-
-   Copy the example environment file and adapt it to your deployment.
+2. **Entwicklungsserver starten**
 
    ```bash
-   cp .env.example .env.local
+   python -m slideshow_manager
    ```
 
-   | Variable | Description |
-   | --- | --- |
-   | `SLIDESHOW_MANAGER_DEVICE_REGISTRY` | JSON string that defines allowed devices (see `.env.example`). |
-   | `SLIDESHOW_MANAGER_SESSION_COOKIE` | Name of the HttpOnly cookie that stores the proxied device session. |
-   | `SLIDESHOW_MANAGER_ALLOWED_HOSTS` | Comma separated whitelist of device hostnames/IPs for SSRF protection. |
-   | `NEXTAUTH_SECRET` | Secret used to encrypt cookies (fallback for custom auth helpers). |
+   Die Anwendung läuft anschließend unter <http://localhost:8000>. Der Admin-Bereich ist unter <http://localhost:8000/admin> erreichbar.
 
-3. **Development server**
+## Installation per Installer-Skript
 
-   ```bash
-   pnpm run dev
-   ```
+Für produktive Deployments liegt unter `scripts/install.sh` ein Installer, der alle erforderlichen Pakete nachzieht, das Repository nach `/opt/Slideshow_Manager` synchronisiert, eine virtuelle Python-Umgebung einrichtet und einen `systemd`-Dienst konfiguriert.
 
-4. **Testing**
+### Remote-Installation via `wget`
 
-   ```bash
-   pnpm run lint
-   pnpm run test
-   ```
+```bash
+wget -O install.sh https://raw.githubusercontent.com/joni123467/Slideshow_Manager/main/scripts/install.sh
+chmod +x install.sh
+sudo ./install.sh
+```
 
-## Project Structure
+Standardmäßig wird der `main`-Branch des Repositories `joni123467/Slideshow_Manager` verwendet. Mit `./install.sh --help` erhältst du eine Übersicht der verfügbaren Optionen (z. B. `--branch`, `--repo`, `--service-user`, `--install-dir`). Zusätzlich stehen die folgenden Umgebungsvariablen zur Verfügung:
 
-- `app/` – Next.js App Router routes for UI and API proxy handlers.
-- `components/` – Reusable UI and form components.
-- `lib/` – Shared utilities for configuration, validation, proxy logic and auth helpers.
-- `server/` – Server-only helpers (audit logging, scheduler stubs).
-- `tests/` – Unit and integration tests (Jest + Testing Library stubs).
+- `SLIDESHOW_MANAGER_REPO` – alternatives Git-Remote (z. B. eigener Fork)
+- `SLIDESHOW_MANAGER_BRANCH` – Branch oder Tag, der installiert werden soll
+- `SLIDESHOW_MANAGER_SERVICE_USER` – Benutzerkonto, unter dem der Dienst laufen soll (Standard: `slideshow`)
 
-## Roadmap
+### Was der Installer erledigt
 
-- Implement advanced fleet dashboards and scheduling UIs.
-- Connect audit log stubs to a persistent datastore (SQL/Prisma).
-- Add end-to-end tests using Playwright.
-- Harden import/export streaming with resumable uploads.
+- Erkennen eines unterstützten Paketmanagers (`apt`, `dnf`, `yum`, `pacman`, `zypper`)
+- Installation von `python3`, `python3-venv`, `python3-pip`, `git`, `curl`, `wget` und `tar`
+- Clonen (oder Herunterladen) des Quellcodes in `/opt/Slideshow_Manager`
+- Aufbau einer virtuellen Umgebung unter `/opt/Slideshow_Manager/.venv`
+- Installation der Python-Abhängigkeiten aus `requirements.txt`
+- Initialisierung einer Beispieldatenbank (`data/slides.json`)
+- Anlegen eines dedizierten Systembenutzers (`slideshow`), Besitzrechte setzen
+- Erstellen eines `systemd`-Dienstes `slideshow-manager.service`, der Gunicorn auf Port 8000 startet
 
-## License
+Nach erfolgreicher Installation erreichst du die Anwendung unter `http://<server>:8000`.
+
+### Dienststeuerung
+
+```bash
+sudo systemctl status slideshow-manager.service
+sudo systemctl restart slideshow-manager.service
+sudo systemctl stop slideshow-manager.service
+```
+
+## Updates
+
+Mit `scripts/update.sh` aktualisierst du eine bestehende Installation. Das Skript lädt den gewünschten Branch erneut herunter, installiert geänderte Python-Abhängigkeiten und startet den `systemd`-Dienst anschließend neu.
+
+```bash
+sudo /opt/Slideshow_Manager/scripts/update.sh
+```
+
+Auch hier kannst du `SLIDESHOW_MANAGER_REPO` und `SLIDESHOW_MANAGER_BRANCH` setzen, um beispielsweise auf einen bestimmten Release-Branch zu wechseln.
+
+## Dateistruktur
+
+```
+slideshow_manager/
+├── __init__.py          # Flask App Factory
+├── __main__.py          # Einstiegspunkt für python -m slideshow_manager
+├── storage.py           # JSON Speicher-Utility
+├── templates/           # Jinja2-Templates für Präsentation & Admin
+└── static/              # CSS- und JS-Dateien
+scripts/
+├── install.sh           # Installer inkl. dependency bootstrap
+├── update.sh            # Updater für bestehende Installationen
+└── start-service.sh     # Startkommando für systemd / Gunicorn
+requirements.txt         # Python-Abhängigkeiten
+```
+
+## Entwicklung & Tests
+
+Für automatisierte Tests kannst du beispielsweise `pytest` nutzen. Ein minimales Setup könnte so aussehen:
+
+```bash
+pip install pytest
+pytest
+```
+
+(Tests sind im Repository nicht enthalten und können nach Bedarf ergänzt werden.)
+
+## Lizenz
 
 MIT
-
->>>>>>> 3568664 (Initial commit)
