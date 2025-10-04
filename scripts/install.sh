@@ -47,31 +47,31 @@ find_pkg_manager() {
 install_dependencies() {
   local pkg_manager
   pkg_manager="$(find_pkg_manager)"
-  local packages=(python3 python3-venv python3-pip curl tar)
+  local packages=(python3 python3-venv python3-pip curl tar git)
   case "${pkg_manager}" in
     apt)
-      packages+=(git)
+      packages+=(python3-dev build-essential libpam0g-dev)
       log "Installiere Pakete über apt (${packages[*]})"
       apt-get update
       DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"
       ;;
     dnf|yum)
-      packages+=(git)
+      packages+=(python3-devel gcc gcc-c++ make pam-devel)
       log "Installiere Pakete über ${pkg_manager} (${packages[*]})"
       "${pkg_manager}" install -y "${packages[@]}"
       ;;
     pacman)
-      packages+=(git base-devel)
+      packages+=(base-devel pam)
       log "Installiere Pakete über pacman (${packages[*]})"
       pacman -Sy --noconfirm "${packages[@]}"
       ;;
     zypper)
-      packages+=(git)
+      packages+=(python3-devel gcc gcc-c++ make pam-devel)
       log "Installiere Pakete über zypper (${packages[*]})"
       zypper --non-interactive install "${packages[@]}"
       ;;
     *)
-      log "Keinen Paketmanager gefunden – stelle sicher, dass python3, pip, tar und curl vorhanden sind."
+      log "Keinen Paketmanager gefunden – stelle sicher, dass python3, pip, tar, curl, ein C-Compiler sowie PAM-Header installiert sind."
       ;;
   esac
 }
@@ -112,11 +112,29 @@ fetch_sources() {
 
 sync_release() {
   local source_dir="$1"
+  local venv_backup=""
+
   mkdir -p "${INSTALL_ROOT}"
-  rm -rf "${INSTALL_ROOT}/current"
-  mkdir -p "${INSTALL_ROOT}/current"
-  cp -a "${source_dir}/." "${INSTALL_ROOT}/current/"
-  chmod +x "${INSTALL_ROOT}/current"/scripts/*.sh
+
+  if [[ -d "${INSTALL_ROOT}/.venv" ]]; then
+    venv_backup="$(mktemp -d)"
+    mv "${INSTALL_ROOT}/.venv" "${venv_backup}/.venv"
+  fi
+
+  if [[ -d "${INSTALL_ROOT}" ]]; then
+    find "${INSTALL_ROOT}" -mindepth 1 -maxdepth 1 ! -name ".venv" -exec rm -rf {} +
+  fi
+
+  cp -a "${source_dir}/." "${INSTALL_ROOT}/"
+
+  if [[ -n "${venv_backup}" && -d "${venv_backup}/.venv" ]]; then
+    mv "${venv_backup}/.venv" "${INSTALL_ROOT}/.venv"
+    rm -rf "${venv_backup}"
+  fi
+
+  if compgen -G "${INSTALL_ROOT}/scripts/*.sh" >/dev/null; then
+    chmod +x "${INSTALL_ROOT}"/scripts/*.sh
+  fi
 }
 
 create_virtualenv() {
@@ -126,8 +144,8 @@ create_virtualenv() {
     python3 -m venv "${venv_dir}"
   fi
   source "${venv_dir}/bin/activate"
-  pip install --upgrade pip
-  pip install --no-cache-dir -r "${INSTALL_ROOT}/current/requirements.txt"
+  pip install --upgrade pip setuptools wheel
+  pip install --no-cache-dir -r "${INSTALL_ROOT}/requirements.txt"
 }
 
 configure_environment_file() {
@@ -160,9 +178,9 @@ After=network.target
 Type=simple
 User=${SERVICE_USER}
 Group=${SERVICE_USER}
-WorkingDirectory=${INSTALL_ROOT}/current
+WorkingDirectory=${INSTALL_ROOT}
 EnvironmentFile=-${ENV_FILE}
-ExecStart=${INSTALL_ROOT}/current/scripts/start-service.sh
+ExecStart=${INSTALL_ROOT}/scripts/start-service.sh
 Restart=on-failure
 RestartSec=5
 
