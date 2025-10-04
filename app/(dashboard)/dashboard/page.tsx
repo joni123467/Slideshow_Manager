@@ -36,6 +36,9 @@ export default async function DashboardPage({
           <Link href={`/devices/${deviceId}/sources`} className="text-slate-300 hover:text-white">
             Quellen
           </Link>
+          <Link href="/updates" className="text-slate-300 hover:text-white">
+            Updates
+          </Link>
           <form action="/api/auth/logout" method="post">
             <button className="rounded-md border border-slate-700 px-3 py-1 text-slate-300 hover:border-slate-500 hover:text-white">
               Logout
